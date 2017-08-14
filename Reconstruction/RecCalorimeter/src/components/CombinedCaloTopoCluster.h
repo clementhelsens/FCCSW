@@ -42,15 +42,14 @@ class CombinedCaloTopoCluster : public GaudiAlgorithm {
   StatusCode execute();
 
   StatusCode finalize();
-
   /**  Find cells with a signal to noise ratio > 6 for ECal and > 4 for HCal, following ATLAS note ATL-LARG-PUB-2008-002.
    *   For simulation without electronic and pile-up noise, the average noise levels are taken as reference for seeding (1.5 and 3.5MeV/cell for E and HCAL, electronic noise only), (2.5 and 100MeV/cell for E and HCAL, added pile-up).
    *   @return list of seed cells ("proto-clusters").
    */
-  virtual void findingSeeds(const fcc::PositionedCaloHitCollection* cells, double threshold, std::vector<fcc::CaloCluster>& seeds, std::vector<fcc:CaloHit>& allCells);
+  virtual void findingSeeds(const fcc::CaloHitCollection* cells, double threshold, std::vector<fcc::CaloCluster>& seeds, std::map<uint64_t, fcc::CaloHit>& allCells);
   /**Building proto-clusters
   */
-  virtual void buildingProtoCluster(std::vector<fcc::CaloCluster> seeds, std::vector<fcc:CaloHit>& allCellIDs, const fcc::PositionedCaloHitCollection* cells, fcc::CaloClusterCollection* clusterCollection);
+  virtual void buildingProtoCluster(const std::vector<fcc::CaloCluster>& seeds, std::map<uint64_t, fcc::CaloHit>& allCells, fcc::CaloClusterCollection* preClusterCollection);
 
  private:
   /// Handle for electromagnetic calorimeter cells (input collection)
@@ -61,6 +60,8 @@ class CombinedCaloTopoCluster : public GaudiAlgorithm {
   DataHandle<fcc::PositionedCaloHitCollection> m_ecalPositions{"ECalPositions", Gaudi::DataHandle::Reader, this};
   /// Handle for hadronic calorimeter cells (input collection)
   DataHandle<fcc::PositionedCaloHitCollection> m_hcalPositions{"HCalPositions", Gaudi::DataHandle::Reader, this};
+  // Pre-cluster collections
+  DataHandle<fcc::CaloClusterCollection> m_preClusterCollection{"calo/clusters", Gaudi::DataHandle::Writer, this};
   /// Pointer to the geometry service
   SmartIF<IGeoSvc> m_geoSvc;
   /// Name of the electromagnetic calorimeter readout
@@ -82,28 +83,21 @@ class CombinedCaloTopoCluster : public GaudiAlgorithm {
   /// Seed threshold hcal
   Gaudi::Property<double> m_neighbourThr_hcal{this, "neighbourThresholdHcal", 3.5, "neighbour threshold estimate [MeV]"};
 
-  /// allCells  
-  std::vector<uint64_t> m_allCellsEcal;
-  std::vector<uint64_t> m_allCellsHcal;
+  /// allCells
+  std::map<uint64_t, fcc::CaloHit> allCellsEcal;
+  std::map<uint64_t, fcc::CaloHit> allCellsHcal;
   /// First list of CaloCells above seeding threshold 
-  std::vector<fcc::CaloHit> m_firstSeedsEcal;
-  std::vector<fcc::CaloHit> m_firstSeedsHcal;
-  /// List of CaloCells above seeding threshold (order is dependent on the seeds energy)
-  std::vector<std::vector<fcc::CaloHit>> m_seedsEcal;
-  std::vector<std::vector<fcc::CaloHit>> m_seedsHcal;
+  std::vector<fcc::CaloCluster> firstSeedsEcal;
+  std::vector<fcc::CaloCluster> firstSeedsHcal;
 
   /// Collection of CaloCells above neighbouring threshold associated to seeds (used for proto-clustering)
-  std::vector<fcc::CaloHitCollection> m_seedsEcalCollection;
-  std::vector<fcc::CaloHitCollection> m_seedsHcalCollection;
+  std::vector<fcc::CaloHitCollection> seedsEcalCollection;
+  std::vector<fcc::CaloHitCollection> seedsHcalCollection;
 
   /// Name of the bit-fields (in the readout) describing the volume ECAL                      
   const std::vector<std::string> m_fieldNamesEcal{"active","cell"};
   std::string m_activeVolumeNameEcal = "LAr_sensitive";
-  //std::vector<std::pair<int, int>> m_fieldExtremesEcal;
-  //ecalIdentifierName = "active_layer"
-  //ecalVolumeName = "LAr_sensitive"
-  //ecalFieldValues=[5,1,1,1]
- /// Name of the bit-fields (in the readout) describing the volume HCAL                      
+   /// Name of the bit-fields (in the readout) describing the volume HCAL                      
   const std::vector<std::string> m_fieldNamesHcal{"layer","row"};
   std::string m_activeVolumeNameHcal = "Polystyrene_tile";
   //std::vector<std::pair<int, int>> m_fieldExtremesHcal;
