@@ -1,20 +1,19 @@
 #include "CombinedCaloTopoCluster.h"
 
 // FCCSW
+#include "DetCommon/DetUtils.h"
 #include "DetInterface/IGeoSvc.h"
 
 // datamodel
-#include "datamodel/PositionedCaloHitCollection.h"
-#include "datamodel/CaloClusterCollection.h"
 #include "datamodel/CaloCluster.h"
-#include "datamodel/CaloHitCollection.h"
+#include "datamodel/CaloClusterCollection.h"
 #include "datamodel/CaloHit.h"
+#include "datamodel/CaloHitCollection.h"
+#include "datamodel/PositionedCaloHitCollection.h"
 
 // DD4hep
 #include "DD4hep/LCDD.h"
 #include "DD4hep/Readout.h"
-
-#include "DetCommon/DetUtils.h"
 
 #include <algorithm>
 #include <map>
@@ -22,14 +21,17 @@
 DECLARE_ALGORITHM_FACTORY(CombinedCaloTopoCluster)
 
 CombinedCaloTopoCluster::CombinedCaloTopoCluster(const std::string& name, ISvcLocator* svcLoc)
-: GaudiAlgorithm(name, svcLoc) {
+    : GaudiAlgorithm(name, svcLoc) {
   declareProperty("ecalCells", m_ecalCells, "calo/ecalCells (input)");
   declareProperty("hcalCells", m_hcalCells, "calo/hcalCells (input)");
-  declareProperty("ECalPositions", m_ecalPositions, "ecalCell positions (input)");
-  declareProperty("HCalPositions", m_hcalPositions, "hcalCell positions (input)");
   declareProperty("ecalReadoutName", m_ecalReadoutName);
   declareProperty("hcalReadoutName", m_hcalReadoutName);
+  declareProperty("ecalFieldNames", m_ecalFieldNames);
+  declareProperty("hcalFieldNames", m_hcalFieldNames);
+  declareProperty("ecalFieldValues", m_ecalFieldValues);
+  declareProperty("hcalFieldValues", m_hcalFieldValues);
   declareProperty("clusters", m_preClusterCollection, "Handle for calo clusters (output collection)");
+  declareProperty("geometryTool", m_geoTool, "Handle for the geometry tool");
 }
 
 StatusCode CombinedCaloTopoCluster::initialize() {
@@ -65,138 +67,197 @@ StatusCode CombinedCaloTopoCluster::initialize() {
     return StatusCode::FAILURE;
   }
 
+  // Take readout bitfield decoder from GeoSvc
+  auto decoderEcal = m_geoSvc->lcdd()->readout(m_ecalReadoutName).idSpec().decoder();
+  auto decoderHcal = m_geoSvc->lcdd()->readout(m_hcalReadoutName).idSpec().decoder();
+  
+  const std::vector<std::pair<int, int>> m_fieldExtremesEcal =
+    det::utils::bitfieldExtremes((*decoderEcal), m_fieldNamesEcal);
+  const std::vector<std::pair<int, int>> m_fieldExtremesHcal =
+    det::utils::bitfieldExtremes((*decoderHcal), m_fieldNamesHcal);
+  
+  // // Geometry settings
+  // if (!m_geoTool.retrieve()) {
+  //   error() << "Unable to retrieve the geometry tool!!!" << endmsg;
+  //   return StatusCode::FAILURE;
+  // }
+  // //  std::vector<uint64_t> ecalDetCells;
+  // std::unordered_map<uint64_t, double> hcalDetCells;
+  // // Prepare map of all existing cells in calorimeter to add noise to all
+  // StatusCode sc_prepareCells = m_geoTool->prepareEmptyCells(hcalDetCells);
+  // if (sc_prepareCells.isFailure()) {
+  //   error() << "Unable to create empty cells!" << endmsg;
+  //   return StatusCode::FAILURE;
+  // }
+  
+  // for (std::unordered_map<uint64_t, double>::iterator itCellID = ecalDetCells.begin(); itCellID != ecalDetCells.end(); itCellID++) {
+  //   uint64_t cellID =  itCellID->first;
+  //   NeighboursMapEcal[cellID] = det::utils::neighbours((*decoderEcal), m_fieldNamesEcal, m_fieldExtremesEcal, cellID);
+  //  }
+
+ // retrieve the neighbours of all cells in HCAL  
+ // Loop over all cells in the calorimeter and retrieve existing cellIDs
+ // Get VolumeID
+  
+  std::vector<uint64_t> hcalDetCells;
+  for (unsigned int it = 0; it < (m_hcalFieldNames.size()-1); it++) {
+    (*decoderHcal)[m_hcalFieldNames[it]] = m_hcalFieldValues[it];
+  }
+  //   for (std::vector<int>::iterator i = m_hcalFieldValues.begin(); i != m_hcalFieldValues.end(); ++i){
+  (*decoderHcal)[m_hcalFieldNames[(m_hcalFieldNames.size()-1)]] = 0;
+  uint64_t volumeIdHcal = decoderHcal->getValue();
+  auto numCellsHcal = det::utils::numberOfCells(volumeIdHcal, *m_hcalSegmentation);
+  debug() << "Number of segmentation cells of HCAL in (phi,eta): " << numCellsHcal << endmsg;
+  // Loop over segmenation cells
+  for (unsigned int iphi = 0; iphi < numCellsHcal[0]; iphi++) {
+    for (unsigned int ieta = 0; ieta < numCellsHcal[1]; ieta++) {
+      (*decoderHcal)["phi"] = iphi;
+      (*decoderHcal)["eta"] = ieta;
+      uint64_t cellId = decoderHcal->getValue();
+      hcalDetCells.push_back(cellId);
+    }
+  }
+  
+  for(std::vector<uint64_t>::iterator itCellIDhcal = hcalDetCells.begin(); itCellIDhcal != hcalDetCells.end(); itCellIDhcal++) {
+   uint64_t cellID =  *itCellIDhcal;
+   NeighboursMapHcal[cellID] = det::utils::neighbours((*decoderHcal), m_fieldNamesHcal, m_fieldExtremesHcal, cellID);
+  }
+  
   return StatusCode::SUCCESS;
 }
 
-bool myFunction (fcc::CaloCluster hit1, fcc::CaloCluster hit2){
-  return hit1.core().energy < hit2.core().energy;
-}
-
-void CombinedCaloTopoCluster::findingSeeds(const fcc::CaloHitCollection* cells, double threshold, std::vector<fcc::CaloCluster>& seeds, std::map<uint64_t, fcc::CaloHit>& allCells){
-  std::cout << "seed threshold  = " << threshold << std::endl;
-  for (const auto& cell : *cells) {
-    allCells[cell.cellId()] = cell;
-    if (cell.core().energy / dd4hep::MeV > threshold){
-      fcc::CaloCluster cluster;
-      cluster.addhits(cell);
-      cluster.energy(cell.core().energy);
-      seeds.push_back(cluster);
-    }
-  }
-} 
-
-
-void CombinedCaloTopoCluster::buildingProtoCluster(const std::vector<fcc::CaloCluster>& seeds, std::map<uint64_t, fcc::CaloHit>& allCells, fcc::CaloClusterCollection* preClusterCollection){
-  // Take readout bitfield decoder from GeoSvc                                                             
-  auto decoderEcal = m_geoSvc->lcdd()->readout(m_ecalReadoutName).idSpec().decoder();
-  auto decoderHcal = m_geoSvc->lcdd()->readout(m_hcalReadoutName).idSpec().decoder();
- 
-  const std::vector<std::pair<int, int>> m_fieldExtremesEcal = det::utils::bitfieldExtremes((*decoderEcal), m_fieldNamesEcal);
-  const std::vector<std::pair<int, int>> m_fieldExtremesHcal = det::utils::bitfieldExtremes((*decoderHcal), m_fieldNamesHcal);
- 
-  std::map<unsigned int, fcc::CaloCluster> clusterOfCell;
-
-  // Loop over every seed in Cal to get neighbouring cells
-  auto itSeed = seeds.begin();
-  uint iSeeds = 0;
-  while(itSeed != seeds.end(), ++itSeed, iSeeds++){
-    auto seedCluster = *itSeed;
-    // the seedCluster consists of CaloHits, they are first entry in collection of proto-clusters
-    for (auto iCell = seedCluster.hits_begin(), end = seedCluster.hits_end(); iCell!=end; ++iCell){
-      fcc::ConstCaloHit cell = *iCell;
-      uint64_t id = cell.cellId();
-      // global position of the CaloHit
-      //uint64_t id = seed.core().cellId;
-      //auto position = seed.core().position;
-      //auto edmPos = fcc::Point();
-      //edmPos.x = position.x() * 10.;
-      //edmPos.y = position.y() * 10.;
-      //edmPos.z = position.z() * 10.;
-      
-      auto cluster = fcc::CaloCluster();
-      cluster.addhits(cell);
-      // assign Cell id to cluster
-      clusterOfCell[id] = cluster;
-      // remove cell added to cluster from (free) cell list
-      allCells.erase(id);
-      
-      // retrieve the neighbours of the seed
-      std::vector<uint64_t> Neighbours = det::utils::neighbours((*decoderEcal), m_fieldNamesEcal, m_fieldExtremesEcal, cell.cellId());
-      std::vector<uint64_t>::iterator itNeighbour = Neighbours.begin();
-      
-      int iNeighbours=0;
-      // Loop over all neighbour cellID to check if it was hit
-      while(itNeighbour != Neighbours.end(), ++itNeighbour, iNeighbours++){
-	// Find the neighbours of the seeds in the Cal cell collection 
-	bool foundNeighbour = false; 
-	uint64_t neighbourID = *itNeighbour;
-	auto itAllCells = allCells.find(neighbourID);
-	if (itAllCells != allCells.end()){
-	  info() << "Found neighbour with CellID: " << itAllCells->first << endmsg;
-	  foundNeighbour = true;
-	  auto neighbouringCell = allCells[neighbourID];
-	  // Check if Neighbour is already assigned to another proto-cluster
-	  bool foundCellInAnotherCluster = false; 	
-	  auto it = clusterOfCell.find(neighbourID);
-	  if(it != clusterOfCell.end()){
-	    foundCellInAnotherCluster = true; 
-	    info() << "neighbour found in another cluster, move on" << endmsg; 	
-	    continue; 
-	  }
-	  else{
-	    // check if the neighouring cell possesses more than threshold energy 
-	    // if yes, the cell is added to proto-cluster collection
-	    // and erased from cell list
-	    if (neighbouringCell.core().energy / dd4hep::MeV > m_neighbourThr_ecal ){
-	      cluster.addhits(neighbouringCell);
-	      allCells.erase(neighbourID);
-	    }	  
-	    else if (neighbouringCell.core().energy / dd4hep::MeV > 0){ 
-	      // TODO: find the seed that is closest and assign!!! 
-	    }
-	  }
-	}
-	else{
-	  info() << "neighbour not found in cell list" << endmsg; 	
-	}
-	auto edmCluster = preClusterCollection->create();
-	//cluster);
-	auto& edmClusterCore = edmCluster.core();
-	edmClusterCore.position.x = cluster.core().position.x;
-	edmClusterCore.position.y = cluster.core().position.y;
-	edmClusterCore.position.z = cluster.core().position.z;
-	edmClusterCore.energy = cluster.core().energy;
-	debug() << "Cluster energy: " << cluster.core().energy << endmsg;
-      }      
-    }
-  }  
-}
+bool myFunction(fcc::CaloHit hit1, fcc::CaloHit hit2) { return hit1.core().energy < hit2.core().energy; }
 
 StatusCode CombinedCaloTopoCluster::execute() {
-  const fcc::PositionedCaloHitCollection* posEcalCells = m_ecalPositions.get();
-  const fcc::PositionedCaloHitCollection* posHcalCells = m_hcalPositions.get();
   const fcc::CaloHitCollection* ecalCells = m_ecalCells.get();
   const fcc::CaloHitCollection* hcalCells = m_hcalCells.get();
 
   // Finds seeds and fills the list of allCells
   CombinedCaloTopoCluster::findingSeeds(ecalCells, m_seedThr_ecal, firstSeedsEcal, allCellsEcal);
   CombinedCaloTopoCluster::findingSeeds(hcalCells, m_seedThr_hcal, firstSeedsHcal, allCellsHcal);
+
+  info() << "Number of seeds found in ECAL = " << firstSeedsEcal.size() << endmsg;
+  info() << "Number of seeds found in HCAL = " << firstSeedsHcal.size() << endmsg;
+  info() << "All Cells in ECAL             = " << allCellsEcal.size() << endmsg;
+  info() << "All Cells in HCAL             = " << allCellsHcal.size() << endmsg;
   
-  std::cout << "Number of seeds found in ECAL = " << firstSeedsEcal.size() << std::endl;
-  std::cout << "Number of seeds found in HCAL = " << firstSeedsHcal.size() << std::endl;
-  
-  //decending order of seeds
-  std::sort (firstSeedsEcal.begin(), firstSeedsEcal.end(), myFunction);
-  std::sort (firstSeedsHcal.begin(), firstSeedsHcal.end(), myFunction);
+  // decending order of seeds
+  std::sort(firstSeedsEcal.begin(), firstSeedsEcal.end(), myFunction);
+  std::sort(firstSeedsHcal.begin(), firstSeedsHcal.end(), myFunction);
 
   fcc::CaloClusterCollection* edmClusters = m_preClusterCollection.createAndPut();
-  CombinedCaloTopoCluster::buildingProtoCluster(firstSeedsEcal, allCellsEcal, edmClusters);
-
+  //while (allCellsEcal.size() > 0) {
+  CombinedCaloTopoCluster::buildingProtoCluster(NeighboursMapEcal, firstSeedsEcal, allCellsEcal, edmClusters);
+  //}
+  // while (firstSeedsHcal.size() > 0) {
+  // CombinedCaloTopoCluster::buildingProtoCluster(NeighboursMapHcal, firstSeedsHcal, allCellsHcal, edmClusters);
+    //}
+  info() << "number of reconstructed clusters: "<< edmClusters->size() << endmsg;
   return StatusCode::SUCCESS;
 }
 
-StatusCode CombinedCaloTopoCluster::finalize() { 
-  return GaudiAlgorithm::finalize(); 
+void CombinedCaloTopoCluster::findingSeeds(const fcc::CaloHitCollection* cells,
+					   double threshold,
+                                           std::vector<fcc::CaloHit>& seeds,
+                                           std::map<uint64_t, fcc::CaloHit>& allCells) {
+  //info() << "cells : " << cells->size() << endmsg;
+  info() << "seed threshold  = " << threshold << "MeV " << endmsg;
+  for (const auto& cell : *cells) {
+    allCells[cell.cellId()] = cell;
+    if (cell.core().energy / dd4hep::MeV > threshold) {
+      seeds.push_back(cell);
+    }
+  }
 }
 
+void CombinedCaloTopoCluster::buildingProtoCluster(const std::map<uint64_t, std::vector<uint64_t> >& neighboursMap,
+						   std::vector<fcc::CaloHit>& seeds,
+                                                   std::map<uint64_t, fcc::CaloHit>& allCells,
+                                                   fcc::CaloClusterCollection* preClusterCollection) {
+  std::map<unsigned int, fcc::CaloCluster> clusterOfCell;
+  // New seed list for neighbours of original seeds
+  std::vector<fcc::CaloHit> newSeeds;
 
+  // Loop over every seed in Cal to get neighbouring cells
+  auto itSeed = seeds.begin();
+  uint iSeeds = 0;
+  while (itSeed != seeds.end(), ++itSeed, iSeeds++) {
+    auto seedCell = *itSeed;
+    // the seedCluster consists of CaloHits, they are first entry in collection of proto-clusters
+    // for (auto iCell = seedCluster.hits_begin(), end = seedCluster.hits_end(); iCell!=end; ++iCell){
+    // fcc::ConstCaloHit cell = *iCell;
+    uint64_t id = seedCell.cellId();
+    // global position of the CaloHit
+    // uint64_t id = seed.core().cellId;
+    // auto position = seed.core().position;
+    // auto edmPos = fcc::Point();
+    // edmPos.x = position.x() * 10.;
+    // edmPos.y = position.y() * 10.;
+    // edmPos.z = position.z() * 10.;
+
+    auto cluster = fcc::CaloCluster();
+    cluster.addhits(seedCell);
+    // assign Cell id to cluster
+    clusterOfCell[id] = cluster;
+    // remove cell added to cluster from (free) cell list
+    allCells.erase(id);
+
+    // retrieve the neighbours of the seed
+    std::vector<uint64_t> Neighbours = neighboursMap.find(id)->second; //det::utils::neighbours((*decoderHcal), m_fieldNamesHcal, m_fieldExtremesHcal, seedCell.cellId());
+    std::vector<uint64_t>::iterator itNeighbour = Neighbours.begin();
+    debug() << "Number of neigbours found : " << Neighbours.size() << endmsg;
+    
+    int iNeighbours = 0;
+    // Loop over all neighbour cellID to check if it was hit
+    while (itNeighbour != Neighbours.end(), ++itNeighbour, iNeighbours++) {
+
+      // Find the neighbours of the seeds in the Cal cell collection
+      bool foundNeighbour = false;
+      uint64_t neighbourID = *itNeighbour;
+      auto itAllCells = allCells.find(neighbourID);
+      if (itAllCells != allCells.end()) {
+        debug() << "Found neighbour with CellID: " << itAllCells->first << endmsg;
+        foundNeighbour = true;
+        auto neighbouringCell = allCells[neighbourID];
+
+        // Check if Neighbour is already assigned to another proto-cluster
+        bool foundCellInAnotherCluster = false;
+        auto it = clusterOfCell.find(neighbourID);
+        if (it != clusterOfCell.end()) {
+          foundCellInAnotherCluster = true;
+          debug() << "neighbour found in another cluster, move on" << endmsg;
+          continue;
+        } else {
+          // check if the neighouring cell possesses more than threshold energy
+          // if yes, the cell is added to proto-cluster collection
+          // and erased from cell list
+          if (neighbouringCell.core().energy / dd4hep::MeV > m_neighbourThr_ecal) {
+            cluster.addhits(neighbouringCell);
+            newSeeds.push_back(neighbouringCell);
+            allCells.erase(neighbourID);
+          } else if (neighbouringCell.core().energy / dd4hep::MeV > 0) {
+            // TODO: find the seed that is closest and assign!!!
+          }
+        }
+      } else {
+        debug() << "neighbour not found in cell list" << endmsg;
+      }     
+    }
+    auto edmCluster = preClusterCollection->create();
+    auto& edmClusterCore = edmCluster.core();
+    edmClusterCore.position.x = cluster.core().position.x;
+    edmClusterCore.position.y = cluster.core().position.y;
+    edmClusterCore.position.z = cluster.core().position.z;
+    edmClusterCore.energy = cluster.core().energy;
+    debug() << "Cluster energy:     " << cluster.core().energy << endmsg;
+    debug() << "Cluster position x: " << cluster.core().position.x << endmsg;
+    debug() << "Cluster position y: " << cluster.core().position.y << endmsg;
+    debug() << "Cluster position z: " << cluster.core().position.z << endmsg;
+  }
+  // Entries in seeds cleared and replace by the list of new seeds (neighbouring cells)
+  seeds.clear();
+  seeds = newSeeds;
+  debug() << "Number of seeds for next iteration: " << newSeeds.size() << endmsg;
+}
+
+StatusCode CombinedCaloTopoCluster::finalize() { return GaudiAlgorithm::finalize(); }
