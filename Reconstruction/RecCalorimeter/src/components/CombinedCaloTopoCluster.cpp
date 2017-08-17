@@ -76,52 +76,30 @@ StatusCode CombinedCaloTopoCluster::initialize() {
   const std::vector<std::pair<int, int>> m_fieldExtremesHcal =
     det::utils::bitfieldExtremes((*decoderHcal), m_fieldNamesHcal);
   
-  // // Geometry settings
-  // if (!m_geoTool.retrieve()) {
-  //   error() << "Unable to retrieve the geometry tool!!!" << endmsg;
-  //   return StatusCode::FAILURE;
-  // }
-  // //  std::vector<uint64_t> ecalDetCells;
-  // std::unordered_map<uint64_t, double> hcalDetCells;
-  // // Prepare map of all existing cells in calorimeter to add noise to all
-  // StatusCode sc_prepareCells = m_geoTool->prepareEmptyCells(hcalDetCells);
-  // if (sc_prepareCells.isFailure()) {
-  //   error() << "Unable to create empty cells!" << endmsg;
-  //   return StatusCode::FAILURE;
-  // }
+  // Geometry settings
+  if (!m_geoTool.retrieve()) {
+    error() << "Unable to retrieve the geometry tool!!!" << endmsg;
+    return StatusCode::FAILURE;
+  }
+  std::unordered_map<uint64_t, double> ecalDetCells;
+  std::unordered_map<uint64_t, double> hcalDetCells;
+  // Prepare map of all existing cells in calorimeter to add noise to all
+  StatusCode sc_prepareCells = m_geoTool->prepareEmptyCells(ecalDetCells);
+  if (sc_prepareCells.isFailure()) {
+    error() << "Unable to create empty cells!" << endmsg;
+    return StatusCode::FAILURE;
+  }
   
-  // for (std::unordered_map<uint64_t, double>::iterator itCellID = ecalDetCells.begin(); itCellID != ecalDetCells.end(); itCellID++) {
-  //   uint64_t cellID =  itCellID->first;
-  //   NeighboursMapEcal[cellID] = det::utils::neighbours((*decoderEcal), m_fieldNamesEcal, m_fieldExtremesEcal, cellID);
-  //  }
+  for (std::unordered_map<uint64_t, double>::iterator itCellID = ecalDetCells.begin(); itCellID != ecalDetCells.end(); itCellID++) {
+    uint64_t cellID =  itCellID->first;
+    NeighboursMapEcal[cellID] = det::utils::neighbours((*decoderEcal), m_fieldNamesEcal, m_fieldExtremesEcal, cellID);
+   }
 
- // retrieve the neighbours of all cells in HCAL  
- // Loop over all cells in the calorimeter and retrieve existing cellIDs
- // Get VolumeID
   
-  std::vector<uint64_t> hcalDetCells;
-  for (unsigned int it = 0; it < (m_hcalFieldNames.size()-1); it++) {
-    (*decoderHcal)[m_hcalFieldNames[it]] = m_hcalFieldValues[it];
-  }
-  //   for (std::vector<int>::iterator i = m_hcalFieldValues.begin(); i != m_hcalFieldValues.end(); ++i){
-  (*decoderHcal)[m_hcalFieldNames[(m_hcalFieldNames.size()-1)]] = 0;
-  uint64_t volumeIdHcal = decoderHcal->getValue();
-  auto numCellsHcal = det::utils::numberOfCells(volumeIdHcal, *m_hcalSegmentation);
-  debug() << "Number of segmentation cells of HCAL in (phi,eta): " << numCellsHcal << endmsg;
-  // Loop over segmenation cells
-  for (unsigned int iphi = 0; iphi < numCellsHcal[0]; iphi++) {
-    for (unsigned int ieta = 0; ieta < numCellsHcal[1]; ieta++) {
-      (*decoderHcal)["phi"] = iphi;
-      (*decoderHcal)["eta"] = ieta;
-      uint64_t cellId = decoderHcal->getValue();
-      hcalDetCells.push_back(cellId);
-    }
-  }
-  
-  for(std::vector<uint64_t>::iterator itCellIDhcal = hcalDetCells.begin(); itCellIDhcal != hcalDetCells.end(); itCellIDhcal++) {
-   uint64_t cellID =  *itCellIDhcal;
-   NeighboursMapHcal[cellID] = det::utils::neighbours((*decoderHcal), m_fieldNamesHcal, m_fieldExtremesHcal, cellID);
-  }
+  // for(std::unordered_map<uint64_t, double>::iterator itCellIDhcal = hcalDetCells.begin(); itCellIDhcal != hcalDetCells.end(); itCellIDhcal++) {
+  //  uint64_t cellID =  itCellIDhcal->first;
+  //  NeighboursMapHcal[cellID] = det::utils::neighbours((*decoderHcal), m_fieldNamesHcal, m_fieldExtremesHcal, cellID);
+  // }
   
   return StatusCode::SUCCESS;
 }
@@ -147,7 +125,7 @@ StatusCode CombinedCaloTopoCluster::execute() {
 
   fcc::CaloClusterCollection* edmClusters = m_preClusterCollection.createAndPut();
   //while (allCellsEcal.size() > 0) {
-  CombinedCaloTopoCluster::buildingProtoCluster(NeighboursMapEcal, firstSeedsEcal, allCellsEcal, edmClusters);
+  //CombinedCaloTopoCluster::buildingProtoCluster(NeighboursMapEcal, firstSeedsEcal, allCellsEcal, edmClusters);
   //}
   // while (firstSeedsHcal.size() > 0) {
   // CombinedCaloTopoCluster::buildingProtoCluster(NeighboursMapHcal, firstSeedsHcal, allCellsHcal, edmClusters);
