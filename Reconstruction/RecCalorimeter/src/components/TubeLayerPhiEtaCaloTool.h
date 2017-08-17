@@ -44,15 +44,15 @@ private:
   /// Name of the detector readout
   Gaudi::Property<std::string> m_readoutName{this, "readoutName", ""};
   /// Name of active volumes
-  Gaudi::Property<std::string> m_activeVolumeName{this, "activeVolumeName", "LAr_sensitive"};
-  /// Name of active layers for sampling calorimeter
-  Gaudi::Property<std::string> m_activeFieldName{this, "activeFieldName", "active_layer"};
+  Gaudi::Property<std::vector<std::string>> m_activeVolumeNames{this, "activeVolumeNames"};
   /// Name of the fields describing the segmented volume
   Gaudi::Property<std::vector<std::string>> m_fieldNames{this, "fieldNames"};
   /// Values of the fields describing the segmented volume
   Gaudi::Property<std::vector<int>> m_fieldValues{this, "fieldValues"};
-  /// Temporary: for use with MergeLayer tool
-  Gaudi::Property<unsigned int> m_activeVolumesNumber{this, "activeVolumesNumber", 0};
+  /// Set the number of volumes for cell retrieval
+  Gaudi::Property<std::vector<int>> m_activeVolumesNumber{this, "activeVolumesNumber"};
+  /// Set the field names of volumes for cell retrieval
+  Gaudi::Property<std::vector<std::string>> m_activeFieldNames{this, "activeFieldNames"};
 };
 
 #endif /* RECCALORIMETER_TUBELAYERPHIETACALOTOOL_H */

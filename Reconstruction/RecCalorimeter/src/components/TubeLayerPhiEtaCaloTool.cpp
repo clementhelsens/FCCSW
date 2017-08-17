@@ -37,15 +37,14 @@ StatusCode TubeLayerPhiEtaCaloTool::finalize() { return GaudiTool::finalize(); }
 
 StatusCode TubeLayerPhiEtaCaloTool::prepareEmptyCells(std::unordered_map<uint64_t, double>& aCells) {
   // Get the total number of active volumes in the geometry
-  auto highestVol = gGeoManager->GetTopVolume();
-  unsigned int numLayers;
-  if (!m_activeVolumesNumber) {
-    numLayers = det::utils::countPlacedVolumes(highestVol, m_activeVolumeName);
-  } else {
-    // used when MergeLayers tool is used. To be removed once MergeLayer gets replaced by RedoSegmentation.
-    numLayers = m_activeVolumesNumber;
-  }
-  info() << "Number of active layers " << numLayers << endmsg;
+  //auto highestVol = gGeoManager->GetTopVolume();
+  //std::vector<int> nums;
+  //if (!m_activeVolumesNumber) {
+  //  numLayers = det::utils::countPlacedVolumes(highestVol, m_activeVolumeNames[0]);
+  //} else {
+  //  // used when MergeLayers tool is used. To be removed once MergeLayer gets replaced by RedoSegmentation.
+  //  nums = m_activeVolumesNumber;
+  //}
 
   // get PhiEta segmentation
   DD4hep::DDSegmentation::GridPhiEta* segmentation;
@@ -66,27 +65,65 @@ StatusCode TubeLayerPhiEtaCaloTool::prepareEmptyCells(std::unordered_map<uint64_
     error() << "Volume readout field descriptors (names and values) have different size." << endmsg;
     return StatusCode::FAILURE;
   }
+  if (m_activeFieldNames.size() != m_activeVolumesNumber.size()) {
+    error() << "Volume readout active field descriptors (names and numbers) have different size." << endmsg;
+    return StatusCode::FAILURE;
+  }
 
   // Loop over all cells in the calorimeter and retrieve existing cellIDs
-  // Loop over active layers
-  for (unsigned int ilayer = 0; ilayer < numLayers; ilayer++) {
-    // Get VolumeID
-    for (unsigned int it = 0; it < m_fieldNames.size(); it++) {
-      (*decoder)[m_fieldNames[it]] = m_fieldValues[it];
+  // Loop over active volumes
+  // Get VolumeID
+  if (m_activeFieldNames.size() == 2) {
+    debug() << "Active fields  : " << m_activeFieldNames[0] << ", " << m_activeFieldNames[1] << endmsg;
+    debug() << "Active numbers : " << m_activeVolumesNumber[0] << ", " << m_activeVolumesNumber[1] << endmsg;     
+    for (unsigned int iF = 0; iF < m_activeVolumesNumber[0]; iF++) {
+      for (unsigned int iS = 0; iS < m_activeVolumesNumber[1]; iS++) {
+	for (unsigned int it = 0; it < m_fieldNames.size(); it++) {
+	  (*decoder)[m_fieldNames[it]] = m_fieldValues[it];
+	}
+	(*decoder)[m_activeFieldNames[0]] = iF;
+	(*decoder)[m_activeFieldNames[1]] = iS;
+	uint64_t volumeId = decoder->getValue();
+	// debug() << "Volume id : " << volumeId << endmsg;
+	
+	// Get number of segmentation cells within the active volume
+	auto numCells = det::utils::numberOfCells(volumeId, *segmentation);
+	debug() << "Number of segmentation cells in (phi,eta): " << numCells << endmsg;
+	// Loop over segmenation cells
+	for (unsigned int iphi = 0; iphi < numCells[0]; iphi++) {
+	  for (unsigned int ieta = 0; ieta < numCells[1]; ieta++) {
+	    (*decoder)["phi"] = iphi;
+	    (*decoder)["eta"] = ieta;
+	    uint64_t cellId = decoder->getValue();
+	    aCells.insert(std::pair<uint64_t, double>(cellId, 0));
+	  }
+	}
+      }
     }
-    (*decoder)[m_activeFieldName] = ilayer;
-    uint64_t volumeId = decoder->getValue();
-
-    // Get number of segmentation cells within the active volume
-    auto numCells = det::utils::numberOfCells(volumeId, *segmentation);
-    debug() << "Number of segmentation cells in (phi,eta): " << numCells << endmsg;
-    // Loop over segmenation cells
-    for (unsigned int iphi = 0; iphi < numCells[0]; iphi++) {
-      for (unsigned int ieta = 0; ieta < numCells[1]; ieta++) {
-        (*decoder)["phi"] = iphi;
-        (*decoder)["eta"] = ieta;
-        uint64_t cellId = decoder->getValue();
-        aCells.insert(std::pair<uint64_t, double>(cellId, 0));
+  }
+  else {
+    debug() << "Only one active field is used!!!" << endmsg;
+    debug() << "Active field : " << m_activeFieldNames[0] << ", " << m_activeVolumesNumber[0] << endmsg;
+    for (unsigned int ite = 0; ite < m_activeVolumesNumber[0]; ite++) {
+	// Get Volume ID
+      for (unsigned int it = 0; it < m_fieldNames.size(); it++) {
+	(*decoder)[m_fieldNames[it]] = m_fieldValues[it];
+      }
+      (*decoder)[m_activeFieldNames[0]] = ite;
+      uint64_t volumeId = decoder->getValue();
+      // debug() << "Volume id : " << volumeId << endmsg;
+      
+      // Get number of segmentation cells within the active volume
+      auto numCells = det::utils::numberOfCells(volumeId, *segmentation);
+      debug() << "Number of segmentation cells in (phi,eta): " << numCells << endmsg;
+      // Loop over segmenation cells
+      for (unsigned int iphi = 0; iphi < numCells[0]; iphi++) {
+	for (unsigned int ieta = 0; ieta < numCells[1]; ieta++) {
+	  (*decoder)["phi"] = iphi;
+	  (*decoder)["eta"] = ieta;
+	  uint64_t cellId = decoder->getValue();
+	  aCells.insert(std::pair<uint64_t, double>(cellId, 0));
+	}
       }
     }
   }

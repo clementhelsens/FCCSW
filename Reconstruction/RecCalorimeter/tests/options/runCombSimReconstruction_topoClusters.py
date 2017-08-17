@@ -60,22 +60,27 @@ geantsim = SimG4Alg("SimG4Alg",
                     eventProvider=pgun,
                     OutputLevel=DEBUG)
 
-# common ECAL specific information
+# common CAL specific information
 # readout name
 ecalReadoutName = "ECalBarrelPhiEta"
 # active material identifier name
-ecalIdentifierName = "layer"
+ecalIdentifierName = ["layer"]
 # active material volume name
-ecalVolumeName = "layer"
-ecalNumberOfLayers = 130
-# ECAL bitfield names & values system:4,cryo:1,module:11,type:3,subtype:3,layer:8,eta:9,phi:10
-ecalFieldNames = ["system","cryo","module","type","subtype"]
-ecalFieldValues = [4,1,11,3,3]
+ecalVolumeName = ["layer"]
+ecalNumberOfLayers = [130]
+# ECAL bitfield names & values system:4,cryo:1,type:3,subtype:3,layer:8,eta:9,phi:10
+ecalFieldNames = ["system"]
+ecalFieldValues = [5]
 # readout name
 hcalReadoutName = "BarHCal_Readout_phieta"
-# ECAL bitfield names & values system:4,module:7,row:9,layer:5,tile:2,eta:-9,phi:-10
-hcalFieldNames = ["system","module","row","layer","tile","eta","phi"]
-hcalFieldValues = [4,7,9,5,2,-9,10]
+# active material identifier name
+hcalIdentifierName = ["row","layer"]
+# active material volume name
+hcalVolumeName = ["wedgeVolume","layerVolume"]
+hcalNumberOfLayers = [510,10]
+## HCAL bitfield names & values system:4,row:9,layer:5,eta:-9,phi:-10
+hcalFieldNames = ["system"]
+hcalFieldValues = [8]
 
 #Configure tools for calo reconstruction
 from Configurables import CalibrateInLayersTool
@@ -118,7 +123,7 @@ resegmentHcal = RedoSegmentation("ReSegmentationHcal",
                                  # old bitfield (readout)
                                  oldReadoutName = "BarHCal_Readout",
                                  # specify which fields are going to be altered (deleted/rewritten)
-                                 oldSegmentationIds = ["eta","phi"],
+                                 oldSegmentationIds = ["module","tile"],
                                  # new bitfield (readout), with new segmentation
                                  newReadoutName = hcalReadoutName,
                                  debugPrint = 10,
@@ -129,7 +134,7 @@ resegmentEcal = RedoSegmentation("ReSegmentationEcal",
                                  # old bitfield (readout)
                                  oldReadoutName = "ECalBarrelEta",
                                  # specify which fields are going to be altered (deleted/rewritten)
-                                 # oldSegmentationIds = ["eta","phi"],
+                                 oldSegmentationIds = ["module"],
                                  # new bitfield (readout), with new segmentation
                                  newReadoutName = ecalReadoutName,
                                  debugPrint = 10,
@@ -150,21 +155,30 @@ positionsHcal2.positionedHits.Path = "newHCalPositions"
 from Configurables import TubeLayerPhiEtaCaloTool, CombinedCaloTopoCluster
 ecalgeo = TubeLayerPhiEtaCaloTool("EcalGeo",
                                   readoutName = ecalReadoutName,
-                                  activeVolumeName = ecalVolumeName,
-                                  activeFieldName = ecalIdentifierName,
+                                  activeVolumeNames = ecalVolumeName,
+                                  activeFieldNames = ecalIdentifierName,
                                   fieldNames = ecalFieldNames,
                                   fieldValues = ecalFieldValues,
                                   # to make it working with MergeLayers algorithm
                                   activeVolumesNumber = ecalNumberOfLayers,
-                                  OutputLevel = DEBUG)
+                                  OutputLevel = INFO)
+hcalgeo = TubeLayerPhiEtaCaloTool("HcalGeo",
+                                  readoutName = hcalReadoutName,
+                                  activeVolumeNames = hcalVolumeName,
+                                  activeFieldNames = hcalIdentifierName,
+                                  fieldNames = hcalFieldNames,
+                                  fieldValues = hcalFieldValues,
+                                  # to make it working with MergeLayers algorithm
+                                  activeVolumesNumber = hcalNumberOfLayers,
+                                  OutputLevel = INFO)
 createTopoClusters = CombinedCaloTopoCluster("CreateTopoClusters",
                                              ecalCells = "newECalCells",
                                              hcalCells = "newHCalCells",
                                              geometryTool = ecalgeo,
                                              ecalReadoutName = ecalReadoutName,
-                                             hcalReadoutName = hcalReadoutName,
                                              ecalFieldNames = ecalFieldNames,
                                              ecalFieldValues = ecalFieldValues,
+                                             hcalReadoutName = hcalReadoutName,
                                              hcalFieldNames = hcalFieldNames,
                                              hcalFieldValues = hcalFieldValues,
                                              seedThresholdEcal =  7.5, #in MeV
