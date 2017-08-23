@@ -110,6 +110,7 @@ StatusCode CombinedCaloTopoCluster::initialize() {
     error() << "Unable to create empty cells!" << endmsg;
     return StatusCode::FAILURE;
   }
+  info() << "Number of cells in HCAL: " << hcalDetCells.size() << endmsg;
    // Filling of map for each Cell to its neighbours
   for (std::unordered_map<uint64_t, double>::iterator itCellID = hcalDetCells.begin(); itCellID != hcalDetCells.end(); itCellID++) {
     uint64_t cellID =  itCellID->first;
@@ -143,7 +144,7 @@ StatusCode CombinedCaloTopoCluster::execute() {
   CombinedCaloTopoCluster::buildingProtoCluster(NeighboursMapEcal, firstSeedsEcal, allCellsEcal, edmClusters);
   //}
   // while (firstSeedsHcal.size() > 0) {
-  // CombinedCaloTopoCluster::buildingProtoCluster(NeighboursMapHcal, firstSeedsHcal, allCellsHcal, edmClusters);
+  CombinedCaloTopoCluster::buildingProtoCluster(NeighboursMapHcal, firstSeedsHcal, allCellsHcal, edmClusters);
     //}
   info() << "number of reconstructed clusters: "<< edmClusters->size() << endmsg;
   return StatusCode::SUCCESS;
@@ -180,15 +181,12 @@ void CombinedCaloTopoCluster::buildingProtoCluster(const std::map<uint64_t, std:
     auto seedCell = *itSeed;
     uint64_t id = seedCell.cellId();
     cellsToFormCluster.push_back(seedCell);
-
-    // assign CellId to cluster
-    //clusterOfCell[id] = cluster;
     
     // remove cell added to cluster from (free) cell list
     allCells.erase(id);
 
     // retrieve the neighbours of the seed
-    std::vector<uint64_t> Neighbours = neighboursMap.find(id)->second; //det::utils::neighbours((*decoderHcal), m_fieldNamesHcal, m_fieldExtremesHcal, seedCell.cellId());
+    std::vector<uint64_t> Neighbours = neighboursMap.find(id)->second;
     std::vector<uint64_t>::iterator itNeighbour = Neighbours.begin();
     debug() << "Number of found neigbours: " << Neighbours.size() << endmsg;
     
@@ -230,34 +228,34 @@ void CombinedCaloTopoCluster::buildingProtoCluster(const std::map<uint64_t, std:
     }
   }
     
-  auto cluster = fcc::CaloCluster();
-  double posX = 0.;
-  double posY = 0.;
-  double posZ = 0.;
-  double energy = 0.;
-
-  for (int i=0; i<cellsToFormCluster.size(); i++) {
-    posX += cellsToFormCluster[i].position().x * cellsToFormCluster[i].energy();
-    posY += cellsToFormCluster[i].position().y * cellsToFormCluster[i].energy();
-    posZ += cellsToFormCluster[i].position().z * cellsToFormCluster[i].energy();
-    energy += cellsToFormCluster[i].core().energy;
-    cluster.addhits(cellsToFormCluster[i]);
-  }
-  cluster.core().energy(energy);
-  cluster.core().position.x(posX/energy);
-  cluster.core().position.y(posY/energy);
-  cluster.core().position.z(posZ/energy);
-
-  auto edmCluster = preClusterCollection->create();
-  auto& edmClusterCore = edmCluster.core();
-  edmClusterCore.position.x = cluster.core().position.x;
-  edmClusterCore.position.y = cluster.core().position.y;
-  edmClusterCore.position.z = cluster.core().position.z;
-  edmClusterCore.energy = cluster.core().energy;
-  debug() << "Cluster energy:     " << cluster.core().energy << endmsg;
-  debug() << "Cluster position x: " << cluster.core().position.x << endmsg;
-  debug() << "Cluster position y: " << cluster.core().position.y << endmsg;
-  debug() << "Cluster position z: " << cluster.core().position.z << endmsg;
+//  auto cluster = fcc::CaloCluster();
+//  double posX = 0.;
+//  double posY = 0.;
+//  double posZ = 0.;
+//  double energy = 0.;
+//
+//  for (int i=0; i<cellsToFormCluster.size(); i++) {
+//    posX += cellsToFormCluster[i].position().x * cellsToFormCluster[i].energy();
+//    posY += cellsToFormCluster[i].position().y * cellsToFormCluster[i].energy();
+//    posZ += cellsToFormCluster[i].position().z * cellsToFormCluster[i].energy();
+//    energy += cellsToFormCluster[i].core().energy;
+//    cluster.addhits(cellsToFormCluster[i]);
+//  }
+//  cluster.core().energy(energy);
+//  cluster.core().position.x(posX/energy);
+//  cluster.core().position.y(posY/energy);
+//  cluster.core().position.z(posZ/energy);
+//
+//  auto edmCluster = preClusterCollection->create();
+//  auto& edmClusterCore = edmCluster.core();
+//  edmClusterCore.position.x = cluster.core().position.x;
+//  edmClusterCore.position.y = cluster.core().position.y;
+//  edmClusterCore.position.z = cluster.core().position.z;
+//  edmClusterCore.energy = cluster.core().energy;
+//  debug() << "Cluster energy:     " << cluster.core().energy << endmsg;
+//  debug() << "Cluster position x: " << cluster.core().position.x << endmsg;
+//  debug() << "Cluster position y: " << cluster.core().position.y << endmsg;
+//  debug() << "Cluster position z: " << cluster.core().position.z << endmsg;
   
   // Entries in seeds cleared and replace by the list of new seeds (neighbouring cells)
   seeds.clear();

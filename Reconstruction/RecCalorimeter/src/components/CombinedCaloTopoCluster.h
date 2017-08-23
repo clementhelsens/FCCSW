@@ -111,7 +111,7 @@ class CombinedCaloTopoCluster : public GaudiAlgorithm {
   /// Name of the bit-fields searching for neighbours in ECAL                      
   const std::vector<std::string> m_fieldNamesEcal{"layer","phi","eta"};
   /// Name of the bit-fields searching for neighbours in HCAL                      
-  const std::vector<std::string> m_fieldNamesHcal{"layer","row","phi"};
+  const std::vector<std::string> m_fieldNamesHcal{"layer","phi","eta"};
 
 };
 
