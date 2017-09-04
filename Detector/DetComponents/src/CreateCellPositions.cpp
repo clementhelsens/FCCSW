@@ -75,9 +75,20 @@ StatusCode CreateCellPositions<Hits, PositionedHit>::execute() {
     auto inSeg = segmentation->position(cellid);
     // correction of extracted coordinates by retrieved radius of volumes
     double radius = std::sqrt(std::pow(outGlobal[0], 2) + std::pow(outGlobal[1], 2));
-    debug() << "Radius : " << radius << endmsg;
     DD4hep::Geometry::Position outSeg(inSeg.x() * radius, inSeg.y() * radius, inSeg.z() * radius);
-    
+    debug() << "Radius : " << radius << endmsg;
+    // inc case of calo discs
+    if (radius == 0 && outGlobal[2] != 0){
+      debug() << "x and y positons of the volume is 0, cell positions are created for calo discs!" << endmsg;
+      double eta = segmentation->eta(cellid);
+      radius = outGlobal[2]/std::sinh(eta);
+      outSeg.SetCoordinates( inSeg.x() * radius, inSeg.y() * radius, outGlobal[2] );
+    }
+    // in case that no eta segmentation is used (case of TileCal), original volume position is used in z
+    if (segmentation->gridSizeEta() > 10){
+      debug() << "grid size in eta > 10, no eta segmentaion used! Cell position.z is volumes position.z" << endmsg;
+      outSeg.SetCoordinates( inSeg.x() * radius, inSeg.y() * radius, outGlobal[2] );
+    }
     auto edmPos = fcc::Point();
     edmPos.x = outSeg.x() / dd4hep::mm;
     edmPos.y = outSeg.y() / dd4hep::mm;
