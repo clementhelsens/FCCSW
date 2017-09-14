@@ -1,3 +1,4 @@
+
 import os
 import numpy as np
 
@@ -5,7 +6,7 @@ import numpy as np
 #seed_array = np.loadtxt('/afs/cern.ch/user/c/cneubuse/FCCSW/condor/seeds.txt',dtype='int',delimiter=',')
 
 #set these in the .sh script                                                                                                                                                                                                                
-energy=1000000
+energy=10000
 num_events=1
 magnetic_field=0
 i=1
