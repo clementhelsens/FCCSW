@@ -46,7 +46,7 @@ StatusCode HepMCToEDMConverter::execute() {
          particle_i != (*vertex_i)->particles_end(HepMC::children);
          ++particle_i) {
       // take only final state particles
-      if ((*particle_i)->status() != 1) continue;
+      //if ((*particle_i)->status() != 1) continue;
 
       tmp = (*particle_i)->momentum();
       fcc::MCParticle particle = particles->create();
